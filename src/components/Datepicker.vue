@@ -11,7 +11,7 @@
       :clear-button-icon="clearButtonIcon"
       :disabled="disabled"
       :format="format"
-      :inline="inline"
+      :inline="isInline"
       :is-open="isOpen"
       :input-class="inputClass"
       :maxlength="maxlength"
@@ -46,7 +46,7 @@
       ref="popup"
       :append-to-body="appendToBody"
       :fixed-position="fixedPosition"
-      :inline="inline"
+      :inline="isInline"
       :rtl="isRtl"
       :visible="isOpen"
     >
@@ -63,7 +63,8 @@
           :day-cell-content="dayCellContent"
           :disabled-dates="disabledDates"
           :first-day-of-week="firstDayOfWeek"
-          :highlighted="highlighted"
+          :highlighted="highlightedDate"
+          :use-date-range="useDateRange"
           :is-rtl="isRtl"
           :is-up-disabled="isUpDisabled"
           :page-date="pageDate"
@@ -78,6 +79,8 @@
           @select="handleSelect"
           @select-disabled="handleSelectDisabled"
           @set-view="setView"
+          @set-highlighted-date="setMouseoverHighlight"
+          @remove-highlighted-date="removeMouseoverHighlight"
         >
           <template v-for="slotKey of calendarSlots">
             <slot :slot="slotKey" :name="slotKey" />
@@ -119,6 +122,13 @@ export default {
     calendarClass: {
       type: [String, Object, Array],
       default: '',
+    },
+    currentDateRangeType: {
+      type: String,
+      default: 'from',
+      validator: (val) => {
+        return ['from', 'to'].indexOf(val) >= 0
+      },
     },
     dayCellContent: {
       type: Function,
@@ -164,6 +174,10 @@ export default {
       type: String,
       default: '',
     },
+    inline: {
+      type: Boolean,
+      default: false,
+    },
     language: {
       type: Object,
       default: () => en,
@@ -183,6 +197,10 @@ export default {
     showHeader: {
       type: Boolean,
       default: true,
+    },
+    useDateRange: {
+      type: Boolean,
+      default: false,
     },
     value: {
       type: [String, Date, Number],
@@ -215,6 +233,8 @@ export default {
        * This represents the first day of the current viewing month
        * {Number}
        */
+      from: {},
+      fromMouseover: null,
       pageTimestamp,
       resetTypedDate: utils.getNewDateObject(),
       /*
@@ -222,6 +242,8 @@ export default {
        * {Date}
        */
       selectedDate: null,
+      to: {},
+      toMouseover: null,
       utils,
       view: '',
     }
@@ -235,8 +257,36 @@ export default {
     computedInitialView() {
       return this.initialView || this.minimumView
     },
+    getFromTimestamp() {
+      return this.from.timestamp || null
+    },
+    getToTimestamp() {
+      return this.to.timestamp || null
+    },
+    highlightedDate() {
+      if (!this.useDateRange) return this.highlighted
+
+      const { value: fromValue = this.fromMouseover } = this.from
+      const { value: toValue = this.toMouseover } = this.to
+
+      return {
+        from: fromValue,
+        to: toValue,
+      }
+    },
+    isEligibleToHighlightCell() {
+      if (!this.useDateRange) return false
+
+      const enableFromHighlight =
+        this.currentDateRangeType === 'from' && !this.getFromTimestamp
+
+      const enableToHighlight =
+        this.currentDateRangeType === 'to' && !this.getToTimestamp
+
+      return enableFromHighlight || enableToHighlight
+    },
     isInline() {
-      return !!this.inline
+      return !!this.inline || this.useDateRange
     },
     isOpen() {
       return this.view !== ''
@@ -336,6 +386,68 @@ export default {
         this.$emit('closed')
       }
     },
+    getDateRangeValue(cell) {
+      const { timestamp } = cell
+
+      return {
+        timestamp,
+        value: new Date(timestamp),
+      }
+    },
+    handleDateRange(selectedDate) {
+      if (this.currentDateRangeType === 'from') {
+        this.handleFromDateRange(selectedDate)
+      } else {
+        this.handleToDateRange(selectedDate)
+      }
+    },
+    handleDateRangeCallback() {
+      this.removeMouseoverHighlight()
+
+      if (this.currentDateRangeType === 'from') {
+        this.$emit('on-from-date-change')
+      } else {
+        this.$emit('on-to-date-change')
+      }
+
+      this.$emit('on-date-range-change', {
+        from: this.getFromTimestamp,
+        to: this.getToTimestamp,
+      })
+    },
+    handleDefaultSelect(cell) {
+      if (this.allowedToShowView(this.nextView.down)) {
+        this.setPageDate(new Date(cell.timestamp))
+        this.$emit(`changed-${this.view}`, cell)
+        this.setView(this.nextView.down)
+        return
+      }
+
+      this.resetTypedDate = this.utils.getNewDateObject()
+      this.setDate(cell.timestamp)
+      this.close()
+    },
+    handleFromDateRange(selectedDate) {
+      const { timestamp } = selectedDate
+
+      if (!this.getToTimestamp) {
+        this.setInitialDateRange({ selectedDate, dateType: 'from' })
+        return
+      }
+
+      this.setValue(null)
+
+      const isDateRangeValid =
+        timestamp < this.getToTimestamp || timestamp === this.getToTimestamp
+
+      if (isDateRangeValid) {
+        this.setFromDate(selectedDate)
+      } else {
+        this.handleInvalidDateRange({ selectedDate, dateType: 'from' })
+      }
+
+      this.handleDateRangeCallback()
+    },
     /**
      * Set the new pageDate and emit `changed-<view>` event
      */
@@ -355,26 +467,58 @@ export default {
     handleInputFocus() {
       this.$emit('focus')
     },
-    /**
-     * Set the date, or go to the next view down
-     */
-    handleSelect(cell) {
-      if (this.allowedToShowView(this.nextView.down)) {
-        this.setPageDate(new Date(cell.timestamp))
-        this.$emit(`changed-${this.view}`, cell)
-        this.setView(this.nextView.down)
-        return
-      }
+    handleInvalidDateRange({ selectedDate, dateType }) {
+      const { timestamp } = selectedDate
 
-      this.resetTypedDate = this.utils.getNewDateObject()
-      this.setDate(cell.timestamp)
-      this.close()
+      this.handleResetDateRange()
+      this.setTemporaryValue(timestamp)
+
+      if (dateType === 'from') {
+        this.setFromDate(selectedDate)
+      } else {
+        this.setToDate(selectedDate)
+      }
+    },
+    handleResetDateRange() {
+      this.from = {}
+      this.to = {}
+      this.setValue(null)
+      this.fromMouseover = null
+      this.toMouseover = null
+    },
+    handleSelect(cell) {
+      if (this.useDateRange) {
+        this.handleDateRange(cell)
+      } else {
+        this.handleDefaultSelect(cell)
+      }
     },
     /**
      * Emit a 'selected-disabled' event
      */
     handleSelectDisabled(cell) {
       this.$emit('selected-disabled', cell)
+    },
+    handleToDateRange(selectedDate) {
+      const { timestamp } = selectedDate
+
+      if (!this.getFromTimestamp) {
+        this.setInitialDateRange({ selectedDate, dateType: 'to' })
+        return
+      }
+
+      this.setValue(null)
+
+      const isDateRangeValid =
+        timestamp > this.getFromTimestamp || timestamp === this.getFromTimestamp
+
+      if (isDateRangeValid) {
+        this.setToDate(selectedDate)
+      } else {
+        this.handleInvalidDateRange({ selectedDate, dateType: 'to' })
+      }
+
+      this.handleDateRangeCallback()
     },
     /**
      * Set the date from a 'typed-date' event
@@ -385,8 +529,9 @@ export default {
     /**
      * Initiate the component
      */
+    /* eslint-disable */
     init() {
-      if (this.value) {
+      if (this.value && !this.useDateRange) {
         let parsedValue = this.parseValue(this.value)
         const isDateDisabled = parsedValue && this.isDateDisabled(parsedValue)
 
@@ -401,6 +546,7 @@ export default {
         this.setInitialView()
       }
     },
+    /* eslint-enable */
     /**
      * Returns true if a date is disabled
      * @param {Date} date
@@ -432,6 +578,13 @@ export default {
       }
       return dateTemp
     },
+    removeMouseoverHighlight() {
+      this.toMouseover = null
+      this.FromMouseover = null
+    },
+    /**
+     * Set the date, or go to the next view down
+     */
     /**
      * Called in the event that the user navigates to date pages and
      * closes the picker without selecting a date.
@@ -453,6 +606,42 @@ export default {
       this.setPageDate(date)
       this.$emit('selected', date)
       this.$emit('input', date)
+    },
+    setFromDate(cell) {
+      this.from = this.getDateRangeValue(cell)
+    },
+    setInitialDateRange({ selectedDate, dateType }) {
+      const { timestamp } = selectedDate
+
+      this.setTemporaryValue(timestamp)
+
+      if (dateType === 'from') {
+        this.setFromDate(selectedDate)
+      } else {
+        this.setToDate(selectedDate)
+      }
+
+      this.handleDateRangeCallback()
+    },
+    setMouseoverHighlight(cell) {
+      if (this.isEligibleToHighlightCell) {
+        const { value } = this.getDateRangeValue(cell)
+
+        if (this.currentDateRangeType === 'from') {
+          this.fromMouseover = value
+        } else {
+          this.toMouseover = value
+        }
+      }
+    },
+    setTemporaryValue(timestamp) {
+      const selectedDate = new Date(timestamp)
+      const parsedValue = this.parseValue(selectedDate)
+
+      this.setValue(parsedValue)
+    },
+    setToDate(cell) {
+      this.to = this.getDateRangeValue(cell)
     },
     /**
      * Sets the initial picker page view: day, month or year

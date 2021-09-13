@@ -10,7 +10,7 @@
       @previous="previousPage"
     >
       <span
-        :class="{ up: !isUpDisabled }"
+        :class="{ 'up': !isUpDisabled, 'up--disabled': useDateRange }"
         class="day__month_btn"
         @click="$emit('set-view', 'month')"
       >
@@ -26,15 +26,21 @@
         </span>
       </div>
       <div ref="cells" class="date-wrapper">
-        <span
+        <div
           v-for="cell in cells"
           :key="cell.timestamp"
-          class="cell day"
-          :class="dayClasses(cell)"
-          @click="select(cell)"
+          :class="dayWrapperClasses"
         >
-          {{ dayCellContent(cell) }}
-        </span>
+          <span
+            class="cell day"
+            :class="dayClasses(cell)"
+            @click="select(cell)"
+            @mouseover="handleHighlightedDate(cell)"
+            @mouseout="handleResetHighlightedDate"
+          >
+            {{ dayCellContent(cell) }}
+          </span>
+        </div>
       </div>
     </div>
     <slot name="calendarFooterDay" />
@@ -42,9 +48,9 @@
 </template>
 
 <script>
-import pickerMixin from '~/mixins/pickerMixin.vue'
-import DisabledDate from '~/utils/DisabledDate'
-import HighlightedDate from '~/utils/HighlightedDate'
+import pickerMixin from '../mixins/pickerMixin.vue'
+import DisabledDate from '../utils/DisabledDate'
+import HighlightedDate from '../utils/HighlightedDate'
 
 export default {
   name: 'PickerDay',
@@ -71,6 +77,10 @@ export default {
     showEdgeDates: {
       type: Boolean,
       default: true,
+    },
+    useDateRange: {
+      type: Boolean,
+      default: false,
     },
   },
   computed: {
@@ -208,6 +218,12 @@ export default {
       const d = new Date(this.pageDate)
       return new Date(this.utils.setMonth(d, this.utils.getMonth(d) + 1))
     },
+    dayWrapperClasses() {
+      return {
+        'date-wrapper__cell-parent': true,
+        'date-wrapper__cell-parent--range': this.useDateRange,
+      }
+    },
   },
   methods: {
     /**
@@ -231,7 +247,7 @@ export default {
         'disabled': day.isDisabled,
         'highlighted': day.isHighlighted,
         'muted': day.isPreviousMonth || day.isNextMonth,
-        'today': day.isToday,
+        'today': this.useDateRange ? false : day.isToday,
         'weekend': day.isWeekend,
         'sat': day.isSaturday,
         'sun': day.isSunday,
@@ -356,6 +372,12 @@ export default {
       return new Date(
         firstOfMonth.setDate(firstOfMonth.getDate() - this.daysFromPrevMonth),
       )
+    },
+    handleHighlightedDate(cell) {
+      this.$emit('set-highlighted-date', cell)
+    },
+    handleResetHighlightedDate() {
+      this.$emit('remove-highlighted-date')
     },
   },
 }
