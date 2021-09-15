@@ -1700,6 +1700,10 @@ var script$4 = {
     showEdgeDates: {
       type: Boolean,
       default: true
+    },
+    useDateRange: {
+      type: Boolean,
+      default: false
     }
   },
   computed: {
@@ -1837,6 +1841,13 @@ var script$4 = {
     firstOfNextMonth() {
       const d = new Date(this.pageDate);
       return new Date(this.utils.setMonth(d, this.utils.getMonth(d) + 1));
+    },
+
+    dayWrapperClasses() {
+      return {
+        'date-wrapper__cell-parent': true,
+        'date-wrapper__cell-parent--range': this.useDateRange
+      };
     }
 
   },
@@ -1862,7 +1873,7 @@ var script$4 = {
         'disabled': day.isDisabled,
         'highlighted': day.isHighlighted,
         'muted': day.isPreviousMonth || day.isNextMonth,
-        'today': day.isToday,
+        'today': this.useDateRange ? false : day.isToday,
         'weekend': day.isWeekend,
         'sat': day.isSaturday,
         'sun': day.isSunday,
@@ -1960,6 +1971,14 @@ var script$4 = {
       const d = this.pageDate;
       const firstOfMonth = this.useUtc ? new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)) : new Date(d.getFullYear(), d.getMonth(), 1, d.getHours(), d.getMinutes());
       return new Date(firstOfMonth.setDate(firstOfMonth.getDate() - this.daysFromPrevMonth));
+    },
+
+    handleHighlightedDate(cell) {
+      this.$emit('set-highlighted-date', cell);
+    },
+
+    handleResetHighlightedDate() {
+      this.$emit('remove-highlighted-date');
     }
 
   }
@@ -1995,7 +2014,10 @@ var __vue_render__$2 = function() {
                 "span",
                 {
                   staticClass: "day__month_btn",
-                  class: { up: !_vm.isUpDisabled },
+                  class: {
+                    up: !_vm.isUpDisabled,
+                    "up--disabled": _vm.useDateRange
+                  },
                   on: {
                     click: function($event) {
                       return _vm.$emit("set-view", "month")
@@ -2030,20 +2052,31 @@ var __vue_render__$2 = function() {
           { ref: "cells", staticClass: "date-wrapper" },
           _vm._l(_vm.cells, function(cell) {
             return _c(
-              "span",
-              {
-                key: cell.timestamp,
-                staticClass: "cell day",
-                class: _vm.dayClasses(cell),
-                on: {
-                  click: function($event) {
-                    return _vm.select(cell)
-                  }
-                }
-              },
+              "div",
+              { key: cell.timestamp, class: _vm.dayWrapperClasses },
               [
-                _vm._v(
-                  "\n        " + _vm._s(_vm.dayCellContent(cell)) + "\n      "
+                _c(
+                  "span",
+                  {
+                    staticClass: "cell day",
+                    class: _vm.dayClasses(cell),
+                    on: {
+                      click: function($event) {
+                        return _vm.select(cell)
+                      },
+                      mouseover: function($event) {
+                        return _vm.handleHighlightedDate(cell)
+                      },
+                      mouseout: _vm.handleResetHighlightedDate
+                    }
+                  },
+                  [
+                    _vm._v(
+                      "\n          " +
+                        _vm._s(_vm.dayCellContent(cell)) +
+                        "\n        "
+                    )
+                  ]
                 )
               ]
             )
@@ -2795,6 +2828,13 @@ var script$8 = {
       type: [String, Object, Array],
       default: ''
     },
+    currentDateRangeType: {
+      type: String,
+      default: 'from',
+      validator: val => {
+        return ['from', 'to'].indexOf(val) >= 0;
+      }
+    },
     dayCellContent: {
       type: Function,
       default: day => day.date
@@ -2835,6 +2875,10 @@ var script$8 = {
       type: String,
       default: ''
     },
+    inline: {
+      type: Boolean,
+      default: false
+    },
     language: {
       type: Object,
       default: () => en
@@ -2854,6 +2898,10 @@ var script$8 = {
     showHeader: {
       type: Boolean,
       default: true
+    },
+    useDateRange: {
+      type: Boolean,
+      default: false
     },
     value: {
       type: [String, Date, Number],
@@ -2883,6 +2931,8 @@ var script$8 = {
        * This represents the first day of the current viewing month
        * {Number}
        */
+      from: {},
+      fromMouseover: null,
       pageTimestamp,
       resetTypedDate: utils.getNewDateObject(),
 
@@ -2891,6 +2941,8 @@ var script$8 = {
        * {Date}
        */
       selectedDate: null,
+      to: {},
+      toMouseover: null,
       utils,
       view: ''
     };
@@ -2906,8 +2958,37 @@ var script$8 = {
       return this.initialView || this.minimumView;
     },
 
+    getFromTimestamp() {
+      return this.from.timestamp || null;
+    },
+
+    getToTimestamp() {
+      return this.to.timestamp || null;
+    },
+
+    highlightedDate() {
+      if (!this.useDateRange) return this.highlighted;
+      const {
+        value: fromValue = this.fromMouseover
+      } = this.from;
+      const {
+        value: toValue = this.toMouseover
+      } = this.to;
+      return {
+        from: fromValue,
+        to: toValue
+      };
+    },
+
+    isEligibleToHighlightCell() {
+      if (!this.useDateRange) return false;
+      const enableFromHighlight = this.currentDateRangeType === 'from' && !this.getFromTimestamp;
+      const enableToHighlight = this.currentDateRangeType === 'to' && !this.getToTimestamp;
+      return enableFromHighlight || enableToHighlight;
+    },
+
     isInline() {
-      return !!this.inline;
+      return !!this.inline || this.useDateRange;
     },
 
     isOpen() {
@@ -3022,6 +3103,80 @@ var script$8 = {
       }
     },
 
+    getDateRangeValue(cell) {
+      const {
+        timestamp
+      } = cell;
+      return {
+        timestamp,
+        value: new Date(timestamp)
+      };
+    },
+
+    handleDateRange(selectedDate) {
+      if (this.currentDateRangeType === 'from') {
+        this.handleFromDateRange(selectedDate);
+      } else {
+        this.handleToDateRange(selectedDate);
+      }
+    },
+
+    handleDateRangeCallback() {
+      this.removeMouseoverHighlight();
+
+      if (this.currentDateRangeType === 'from') {
+        this.$emit('on-from-date-change');
+      } else {
+        this.$emit('on-to-date-change');
+      }
+
+      this.$emit('on-date-range-change', {
+        from: this.getFromTimestamp,
+        to: this.getToTimestamp
+      });
+    },
+
+    handleDefaultSelect(cell) {
+      if (this.allowedToShowView(this.nextView.down)) {
+        this.setPageDate(new Date(cell.timestamp));
+        this.$emit(`changed-${this.view}`, cell);
+        this.setView(this.nextView.down);
+        return;
+      }
+
+      this.resetTypedDate = this.utils.getNewDateObject();
+      this.setDate(cell.timestamp);
+      this.close();
+    },
+
+    handleFromDateRange(selectedDate) {
+      const {
+        timestamp
+      } = selectedDate;
+
+      if (!this.getToTimestamp) {
+        this.setInitialDateRange({
+          selectedDate,
+          dateType: 'from'
+        });
+        return;
+      }
+
+      this.setValue(null);
+      const isDateRangeValid = timestamp < this.getToTimestamp || timestamp === this.getToTimestamp;
+
+      if (isDateRangeValid) {
+        this.setFromDate(selectedDate);
+      } else {
+        this.handleInvalidDateRange({
+          selectedDate,
+          dateType: 'from'
+        });
+      }
+
+      this.handleDateRangeCallback();
+    },
+
     /**
      * Set the new pageDate and emit `changed-<view>` event
      */
@@ -3044,20 +3199,37 @@ var script$8 = {
       this.$emit('focus');
     },
 
-    /**
-     * Set the date, or go to the next view down
-     */
-    handleSelect(cell) {
-      if (this.allowedToShowView(this.nextView.down)) {
-        this.setPageDate(new Date(cell.timestamp));
-        this.$emit(`changed-${this.view}`, cell);
-        this.setView(this.nextView.down);
-        return;
-      }
+    handleInvalidDateRange({
+      selectedDate,
+      dateType
+    }) {
+      const {
+        timestamp
+      } = selectedDate;
+      this.handleResetDateRange();
+      this.setTemporaryValue(timestamp);
 
-      this.resetTypedDate = this.utils.getNewDateObject();
-      this.setDate(cell.timestamp);
-      this.close();
+      if (dateType === 'from') {
+        this.setFromDate(selectedDate);
+      } else {
+        this.setToDate(selectedDate);
+      }
+    },
+
+    handleResetDateRange() {
+      this.from = {};
+      this.to = {};
+      this.setValue(null);
+      this.fromMouseover = null;
+      this.toMouseover = null;
+    },
+
+    handleSelect(cell) {
+      if (this.useDateRange) {
+        this.handleDateRange(cell);
+      } else {
+        this.handleDefaultSelect(cell);
+      }
     },
 
     /**
@@ -3065,6 +3237,34 @@ var script$8 = {
      */
     handleSelectDisabled(cell) {
       this.$emit('selected-disabled', cell);
+    },
+
+    handleToDateRange(selectedDate) {
+      const {
+        timestamp
+      } = selectedDate;
+
+      if (!this.getFromTimestamp) {
+        this.setInitialDateRange({
+          selectedDate,
+          dateType: 'to'
+        });
+        return;
+      }
+
+      this.setValue(null);
+      const isDateRangeValid = timestamp > this.getFromTimestamp || timestamp === this.getFromTimestamp;
+
+      if (isDateRangeValid) {
+        this.setToDate(selectedDate);
+      } else {
+        this.handleInvalidDateRange({
+          selectedDate,
+          dateType: 'to'
+        });
+      }
+
+      this.handleDateRangeCallback();
     },
 
     /**
@@ -3077,8 +3277,10 @@ var script$8 = {
     /**
      * Initiate the component
      */
+
+    /* eslint-disable */
     init() {
-      if (this.value) {
+      if (this.value && !this.useDateRange) {
         let parsedValue = this.parseValue(this.value);
         const isDateDisabled = parsedValue && this.isDateDisabled(parsedValue);
 
@@ -3094,6 +3296,8 @@ var script$8 = {
         this.setInitialView();
       }
     },
+
+    /* eslint-enable */
 
     /**
      * Returns true if a date is disabled
@@ -3130,6 +3334,15 @@ var script$8 = {
       return dateTemp;
     },
 
+    removeMouseoverHighlight() {
+      this.toMouseover = null;
+      this.FromMouseover = null;
+    },
+
+    /**
+     * Set the date, or go to the next view down
+     */
+
     /**
      * Called in the event that the user navigates to date pages and
      * closes the picker without selecting a date.
@@ -3153,6 +3366,52 @@ var script$8 = {
       this.setPageDate(date);
       this.$emit('selected', date);
       this.$emit('input', date);
+    },
+
+    setFromDate(cell) {
+      this.from = this.getDateRangeValue(cell);
+    },
+
+    setInitialDateRange({
+      selectedDate,
+      dateType
+    }) {
+      const {
+        timestamp
+      } = selectedDate;
+      this.setTemporaryValue(timestamp);
+
+      if (dateType === 'from') {
+        this.setFromDate(selectedDate);
+      } else {
+        this.setToDate(selectedDate);
+      }
+
+      this.handleDateRangeCallback();
+    },
+
+    setMouseoverHighlight(cell) {
+      if (this.isEligibleToHighlightCell) {
+        const {
+          value
+        } = this.getDateRangeValue(cell);
+
+        if (this.currentDateRangeType === 'from') {
+          this.fromMouseover = value;
+        } else {
+          this.toMouseover = value;
+        }
+      }
+    },
+
+    setTemporaryValue(timestamp) {
+      const selectedDate = new Date(timestamp);
+      const parsedValue = this.parseValue(selectedDate);
+      this.setValue(parsedValue);
+    },
+
+    setToDate(cell) {
+      this.to = this.getDateRangeValue(cell);
     },
 
     /**
@@ -3249,7 +3508,7 @@ var __vue_render__$5 = function() {
             "clear-button-icon": _vm.clearButtonIcon,
             disabled: _vm.disabled,
             format: _vm.format,
-            inline: _vm.inline,
+            inline: _vm.isInline,
             "is-open": _vm.isOpen,
             "input-class": _vm.inputClass,
             maxlength: _vm.maxlength,
@@ -3296,7 +3555,7 @@ var __vue_render__$5 = function() {
           attrs: {
             "append-to-body": _vm.appendToBody,
             "fixed-position": _vm.fixedPosition,
-            inline: _vm.inline,
+            inline: _vm.isInline,
             rtl: _vm.isRtl,
             visible: _vm.isOpen
           }
@@ -3333,7 +3592,8 @@ var __vue_render__$5 = function() {
                     "day-cell-content": _vm.dayCellContent,
                     "disabled-dates": _vm.disabledDates,
                     "first-day-of-week": _vm.firstDayOfWeek,
-                    highlighted: _vm.highlighted,
+                    highlighted: _vm.highlightedDate,
+                    "use-date-range": _vm.useDateRange,
                     "is-rtl": _vm.isRtl,
                     "is-up-disabled": _vm.isUpDisabled,
                     "page-date": _vm.pageDate,
@@ -3349,7 +3609,9 @@ var __vue_render__$5 = function() {
                     "page-change": _vm.handlePageChange,
                     select: _vm.handleSelect,
                     "select-disabled": _vm.handleSelectDisabled,
-                    "set-view": _vm.setView
+                    "set-view": _vm.setView,
+                    "set-highlighted-date": _vm.setMouseoverHighlight,
+                    "remove-highlighted-date": _vm.removeMouseoverHighlight
                   }
                 },
                 [

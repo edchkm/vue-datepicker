@@ -1,3 +1,5 @@
+$primary-color: #1baa56;
+
 .rtl {
   direction: rtl;
 }
@@ -16,7 +18,7 @@
   background: #fff;
   border: 1px solid #ccc;
   position: absolute;
-  width: 300px;
+  width: 328px;
   z-index: 10000;
 
   .today {
@@ -98,6 +100,10 @@
         background: #eee;
       }
     }
+
+    .up--disabled {
+      pointer-events: none;
+    }
   }
 
   .disabled {
@@ -115,20 +121,15 @@
     width: inherit;
   }
 
-  .date-wrapper {
-    display: inline-flex;
-    flex-wrap: wrap;
-  }
-
   .cell {
     border: 1px solid transparent;
-    display: inline-block;
-    height: 40px;
+    height: 100%;
     line-height: 40px;
-    padding: 0 5px;
-    text-align: center;
-    vertical-align: middle;
-    width: 14.285714285714286%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    border-radius: 4px;
 
     &:not(.blank):not(.disabled).day,
     &:not(.blank):not(.disabled).month,
@@ -136,29 +137,65 @@
       cursor: pointer;
 
       &:hover {
-        border: 1px solid #4bd;
+        border: 1px solid $primary-color;
+      }
+    }
+
+    &:not(.blank):not(.disabled):not(.selected):not(.highlighted) {
+      cursor: pointer;
+
+      &:hover {
+        border: 1px solid transparent;
+        background-color: #f6f6f6;
+        color: #404040;
       }
     }
 
     &.selected {
-      background: #4bd;
+      background: $primary-color;
       color: #104756;
 
       &:hover {
-        background: #4bd;
+        background: $primary-color;
       }
 
       &.highlighted {
-        background: #4bd;
+        background: $primary-color;
+      }
+    }
+
+    &.selected {
+      background-color: $primary-color;
+      color: #fff;
+
+      &:hover {
+        background-color: $primary-color;
+        color: #fff;
       }
     }
 
     &.highlighted {
-      background: #cae5ed;
+      background: #edf9f4;
       color: #104756;
 
       &.disabled {
         color: #accad2;
+      }
+
+      &:hover {
+        border: 1px solid $primary-color;
+        border-radius: 4px;
+      }
+    }
+
+    &.highlight-start,
+    &.highlight-end {
+      background: $primary-color;
+      color: #fff;
+
+      &:hover {
+        background-color: $primary-color;
+        color: #fff;
       }
     }
 
@@ -174,6 +211,52 @@
 
         &.highlighted {
           color: #accad2;
+        }
+      }
+
+      &:not(.selected):not(.highlight-start):not(.highlight-end):not(.highlighted) {
+        color: #949494;
+      }
+    }
+  }
+
+  .date-wrapper {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+
+    &__cell-parent {
+      width: 44px;
+      height: 44px;
+      padding: 6px;
+
+      &--range {
+        padding: 0;
+        margin-top: 8px;
+
+        .cell {
+          border-radius: 0;
+
+          &:not(.blank):not(.disabled):not(.selected):not(.highlighted):hover {
+            border: 1px solid $primary-color;
+            background-color: transparent;
+            border-radius: 4px;
+          }
+
+          &.muted.selected {
+            color: #fff;
+          }
+        }
+
+        .highlighted {
+          color: #104756;
+        }
+
+        .highlight-start,
+        .highlight-end,
+        .selected {
+          border-radius: 4px;
+          color: #fff;
         }
       }
     }
