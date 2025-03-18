@@ -29,8 +29,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "$npm_execpath run build",
-    "build": "$npm_execpath run clear && $npm_execpath run build:app && $npm_execpath run build:locale",
+    "prepare": "npm run build",
+    "build": "npm run clear && npm run build:app && npm run build:locale",
     "build:app": "vite build -c scripts/build/default.js && vite build -c scripts/build/cjs.js && vite build -c scripts/build/esm.js",
     "build:locale": "babel-node scripts/build/locale.js",
     "clear": "rm -rf dist/*",
