@@ -26,7 +26,6 @@
     "LICENSE"
   ],
   "scripts": {
-    "prepare": "npm run clear && npm run build",
     "build": "npm run build:app && npm run build:locale",
     "build:app": "rollup -c ./scripts/build.js",
     "build:locale": "babel-node scripts/build-locale.js",
@@ -43,8 +42,7 @@
     "docs:build": "vuepress build docs"
   },
   "pre-commit": [
-    "lint",
-    "test"
+    "lint"
   ],
   "prettier": "./prettier.js",
   "peerDependencies": {

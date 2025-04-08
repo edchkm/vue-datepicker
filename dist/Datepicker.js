@@ -1,6 +1,6 @@
 /*
 * @sum.cumo/vue-datepicker v3.2.0
-* (c) 2018-2021 sum.cumo GmbH
+* (c) 2018-2025 sum.cumo GmbH
 * Released under the Apache-2.0 License.
 */
 (function (global, factory) {
